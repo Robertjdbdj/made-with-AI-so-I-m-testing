@@ -1,0 +1,99 @@
+--!strict
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+
+local LocalPlayer = Players.LocalPlayer
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local Humanoid = Character:WaitForChild("Humanoid") :: Humanoid
+
+-- Ensure the rig is actually R6
+if Humanoid.RigType ~= Enum.RigType.R6 then
+	warn("[Procedural R6] Character is not an R6 Rig. Animation aborted.")
+	return
+end
+
+local Torso = Character:WaitForChild("Torso") :: BasePart
+
+-- Retrieve Core R6 Joints (Motor6Ds attach directly to Torso)
+local RootJoint = Character:WaitForChild("HumanoidRootPart"):WaitForChild("RootJoint") :: Motor6D
+local Neck = Torso:WaitForChild("Neck") :: Motor6D
+local LeftShoulder = Torso:WaitForChild("Left Shoulder") :: Motor6D
+local RightShoulder = Torso:WaitForChild("Right Shoulder") :: Motor6D
+local LeftHip = Torso:WaitForChild("Left Hip") :: Motor6D
+local RightHip = Torso:WaitForChild("Right Hip") :: Motor6D
+
+-- Store Baseline Transform C0 Cache
+local origRootC0 = RootJoint.C0
+local origNeckC0 = Neck.C0
+local origLSC0 = LeftShoulder.C0
+local origRSC0 = RightShoulder.C0
+local origLHC0 = LeftHip.C0
+local origRHC0 = RightHip.C0
+
+-- Configurable Animation Variables
+local WaveSpeed = 7.5
+local DistortionScale = 0.25 -- Controls how far limbs disconnect from sockets
+local Cycle = 0
+
+-- Main Procedural Render Step Loop
+local function OnRenderStep(deltaTime: number)
+	if Humanoid.Health <= 0 then return end
+	
+	-- Increment time tracking with delta optimization
+	Cycle += deltaTime * WaveSpeed
+	
+	-- Generate Multi-Frequency Math Waves
+	local primarySine = math.sin(Cycle)
+	local secondaryCosine = math.cos(Cycle * 1.3)
+	local microTwitch = math.sin(Cycle * 6) * math.cos(Cycle * 9)
+	
+	-- Calculate velocity weight (safely blends back to default run animations)
+	local currentVelocity = Torso.AssemblyLinearVelocity.Magnitude
+	local movementWeight = math.clamp(1 - (currentVelocity / Humanoid.WalkSpeed), 0, 1)
+	
+	if movementWeight > 0.05 then
+		-- 1. Torso Breathing, Levitation, and Swaying
+		-- Moves the entire character up/down and slants the chassis dynamically
+		RootJoint.C0 = origRootC0 
+			* CFrame.new(0, 0, (primarySine * 0.15) * movementWeight) -- Smooth breathing float
+			* CFrame.Angles((primarySine * 0.04) * movementWeight, (secondaryCosine * 0.03) * movementWeight, (microTwitch * 0.01) * movementWeight)
+		
+		-- 2. Unsettling Head Decoupling
+		-- Tilts the head while micro-twitching to simulate an unhinged entity
+		Neck.C0 = origNeckC0 
+			* CFrame.new(0, (microTwitch * 0.02) * movementWeight, 0)
+			* CFrame.Angles((primarySine * 0.05) * movementWeight, (secondaryCosine * 0.08) * movementWeight, (microTwitch * 0.06) * movementWeight)
+		
+		-- 3. Left Arm Matrix Dislocation (Fluid levitation)
+		-- Modifies the Translation matrix (CFrame.new) to lift the shoulder right out of its socket
+		LeftShoulder.C0 = origLSC0 
+			* CFrame.new((-secondaryCosine * DistortionScale * 0.3) * movementWeight, (primarySine * DistortionScale) * movementWeight, 0)
+			* CFrame.Angles(math.rad(-20) + (secondaryCosine * 0.12) * movementWeight, 0, math.rad(-15) + (primarySine * 0.08) * movementWeight)
+			
+		-- 4. Right Arm Aggressive Blade Claw Matrix
+		-- Pushes the arm forward and twists it awkwardly, adding jittery glitches
+		RightShoulder.C0 = origRSC0 
+			* CFrame.new((microTwitch * DistortionScale * 0.4) * movementWeight, (primarySine * DistortionScale * 0.5) * movementWeight, (-primarySine * DistortionScale * 0.6) * movementWeight)
+			* CFrame.Angles(math.rad(60) + (primarySine * 0.2) * movementWeight, math.rad(-30), math.rad(20) + (microTwitch * 0.15) * movementWeight)
+			
+		-- 5. Lower Leg Pseudo-Weight Distribution
+		-- Keeps feet grounded relative to the floating torso, widening the stance
+		LeftHip.C0 = origLHC0 
+			* CFrame.new(0, (-primarySine * 0.08) * movementWeight, 0)
+			* CFrame.Angles((-primarySine * 0.05) * movementWeight, 0, math.rad(-5))
+			
+		RightHip.C0 = origRHC0 
+			* CFrame.new(0, (primarySine * 0.08) * movementWeight, 0)
+			* CFrame.Angles((primarySine * 0.05) * movementWeight, 0, math.rad(5))
+	else
+		-- Smoothly interpolate (Lerp) back to the base walking/running states when moving
+		RootJoint.C0 = RootJoint.C0:Lerp(origRootC0, deltaTime * 12)
+		Neck.C0 = Neck.C0:Lerp(origNeckC0, deltaTime * 12)
+		LeftShoulder.C0 = LeftShoulder.C0:Lerp(origLSC0, deltaTime * 12)
+		RightShoulder.C0 = RightShoulder.C0:Lerp(origRSC0, deltaTime * 12)
+		LeftHip.C0 = LeftHip.C0:Lerp(origLHC0, deltaTime * 12)
+		RightHip.C0 = RightHip.C0:Lerp(origRHC0, deltaTime * 12)
+	end
+end
+
+RunService.RenderStepped:Connect(OnRenderStep)
